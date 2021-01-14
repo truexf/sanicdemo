@@ -23,6 +23,9 @@ class Entity:
     def set_login(self, login_entry):
         self.login_entry = login_entry
 
+    def _rewrite_request_dict(self, action: str, entity: dict):
+        pass
+
     def _insert_sql(self, entity: dict, update_when_exists: bool):
         keys = ""
         values_holder = ""
@@ -147,6 +150,7 @@ class Entity:
             return sanic.response.json({"err_code": -2, "err_msg": "no body"})
         if action == "new":
             entity = json.loads(request.body)
+            self._rewrite_request_dict(action, entity)
             err_msg = ""
             n = 0
             id = 0
@@ -159,6 +163,7 @@ class Entity:
             return sanic.response.json({"err_code": -1, "err_msg": err_msg})
         elif action == "modify":
             entity = json.loads(request.body)
+            self._rewrite_request_dict(action, entity)
             err_msg = ""
             n = 0
             try:
@@ -170,6 +175,7 @@ class Entity:
             return sanic.response.json({"err_code": -1, "err_msg": err_msg})
         elif action == "delete":
             entity = json.loads(request.body)
+            self._rewrite_request_dict(action, entity)
             err_msg = ""
             n = 0
             try:
@@ -181,6 +187,7 @@ class Entity:
             return sanic.response.json({"err_code": -1, "err_msg": err_msg})
         elif action == "query":
             entity = json.loads(request.body)
+            self._rewrite_request_dict(action, entity)
             err_msg = ""
             ret = []
             try:

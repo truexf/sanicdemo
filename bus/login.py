@@ -118,6 +118,7 @@ class LoginManager:
             return {"err_code": -1, "err_msg": "no body"}, None
         info = json.loads(request.body)
         token = request.headers.get("token")
+        project_id = request.headers.get("project_id")
         if token is None:
             return {"err_code": -1, "err_msg": "no token"}, None
         entry = self._get_entry(token)
@@ -127,8 +128,7 @@ class LoginManager:
         tm_unix = int(time.time())
         ip = pretty.remote_ip(request)
         ua = pretty.user_agent(request)
-        if ip == entry.check_in_ip and ua == entry.check_in_ua and tm_unix - entry.check_in_time < 3600 * 24 and info.get(
-                "project_id") == entry.project_id:
+        if ip == entry.check_in_ip and ua == entry.check_in_ua and tm_unix - entry.check_in_time < 3600 * 24 and int(project_id) == entry.project_id:
             return {"err_code": 0, "err_msg": ""}, entry
         return {"err_code": -2, "err_msg": "invalid token"}, None
 
