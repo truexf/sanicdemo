@@ -1,0 +1,2 @@
+LOG_HTTP = 100
+LOG_SQL = 101

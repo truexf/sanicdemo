@@ -1,0 +1,32 @@
+{
+  "int-key": 1234,
+  "str-key": "hello json",
+  "float-key": "1234.56",
+  "bool-key": false,
+  "now": "$datetime",
+  "time": "$time",
+  "stime": "$stime",
+  "rand": "$rand",
+  "$__rand__": "$rand",
+  "exp-1": [
+//    single assignment exp
+    [
+      ["$rand","between",[0,50]],
+      ["$ret","=","hello json exp"]
+    ],
+//    multi assginment exp
+    [
+      ["$rand",">=",0],
+      [
+        ["$ret1","=","hello multi-assignment"],
+//        ["$ret2","=",200],
+        ["$ret2","+=","abc"],
+//        ["$ret2","-=",200],
+        ["$ret_second","=","$second"],
+        ["$ret_now","=","$datetime"],
+        ["$ret_hour","=","$hour"],
+        ["$ret_rand","=","$rand"]
+      ]
+    ]
+  ]
+}
