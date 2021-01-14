@@ -1,3 +1,4 @@
+使用sanic作为web server的服务端，以redis作为共享内存，以mysql作为db的demo项目
 ### 系统名称：sanic demo - 统一人力资源安全管控系统（Unified human resource security control system）
  
 ### 简称: UHRS
