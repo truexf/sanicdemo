@@ -13,18 +13,26 @@ class KeyNotFound(Exception):
     pass
 
 
+class ChildNotEmpty(Exception):
+    pass
+
+
 class Entity:
     def __init__(self, table_name: str, key_field_list: []):
         self._table_name = table_name
         self._key_field_list = key_field_list
         self._key_field_dict = dict(zip(key_field_list, key_field_list))
         self.login_entry = None
+        self._disable_on_delete = True
 
     def set_login(self, login_entry):
         self.login_entry = login_entry
 
     def _rewrite_request_dict(self, action: str, entity: dict):
         pass
+
+    def _field_filter(self, action: str, key: str):
+        return True
 
     def _insert_sql(self, entity: dict, update_when_exists: bool):
         keys = ""
@@ -35,6 +43,8 @@ class Entity:
         dup_update_values = []
         for k, v in entity.items():
             if v is None:
+                continue
+            if not self._field_filter("insert", k):
                 continue
             if keys != "":
                 keys += ", "
@@ -70,6 +80,8 @@ class Entity:
                 where += " and "
             where = where + key + " = %s"
         for k, v in entity.items():
+            if not self._field_filter("update", k):
+                continue
             if k in self._key_field_dict:
                 continue
             if v is None:
@@ -79,6 +91,8 @@ class Entity:
             update = update + k + "= %s"
             update_values.append(v)
         sql = "update %s set %s where %s" % (self._table_name, update, where)
+        if update == "":
+            return "", []
         return sql, update_values + where_values
 
     def _delete_sql(self, entity: dict):
@@ -87,6 +101,8 @@ class Entity:
         for key in self._key_field_list:
             key_exists = False
             for k, v in entity.items():
+                if not self._field_filter("delete", k):
+                    continue
                 if v is None:
                     continue
                 if k == key:
@@ -98,7 +114,10 @@ class Entity:
             if where != "":
                 where += " and "
             where = where + key + " = %s"
-        sql = "delete from %s where %s" % (self._table_name, where)
+        if not self._disable_on_delete:
+            sql = "delete from %s where %s" % (self._table_name, where)
+        else:
+            sql = "update %s set disabled = 1 where %s" % (self._table_name, where)
         return sql, where_values
 
     def _select_sql(self, entity: dict):
@@ -107,10 +126,14 @@ class Entity:
         for k, v in entity.items():
             if v is None:
                 continue
+            if not self._field_filter("select", k):
+                continue
             if where != "":
                 where += " and "
             where = where + k + " = %s"
             where_values.append(v)
+        if where == "":
+            where = " 1 = 1 "
         sql = "select * from %s where %s" % (self._table_name, where)
         return sql, where_values
 
@@ -126,7 +149,7 @@ class Entity:
     def _before_select(self, conn, entity: dict):
         pass
 
-    def _after_insert(self, conn, entity: dict):
+    def _after_insert(self, conn, entity: dict, effect_row_count: int, inserted_id: int):
         pass
 
     def _after_update(self, conn, entity: dict):
@@ -154,10 +177,10 @@ class Entity:
             err_msg = ""
             n = 0
             id = 0
-            try:
-                n, id = self.insert(conn, entity)
-            except Exception as e:
-                err_msg = str(e)
+            # try:
+            n, id = self.insert(conn, entity)
+            # except Exception as e:
+            #     err_msg = str(e)
             if n > 0 and id > 0:
                 return sanic.response.json({"err_code": 0, "_id": id})
             return sanic.response.json({"err_code": -1, "err_msg": err_msg})
@@ -166,10 +189,10 @@ class Entity:
             self._rewrite_request_dict(action, entity)
             err_msg = ""
             n = 0
-            try:
-                n = self.update(conn, entity)
-            except Exception as e:
-                err_msg = str(e)
+            # try:
+            n = self.update(conn, entity)
+            # except Exception as e:
+            #     err_msg = str(e)
             if n > 0:
                 return sanic.response.json({"err_code": 0})
             return sanic.response.json({"err_code": -1, "err_msg": err_msg})
@@ -190,13 +213,13 @@ class Entity:
             self._rewrite_request_dict(action, entity)
             err_msg = ""
             ret = []
-            try:
-                ret = self.select(conn, entity)
-            except Exception as e:
-                err_msg = str(e)
-            if err_msg == "":
-                return sanic.response.json({"err_code": 0, "data_list": ret})
-            return sanic.response.json({"err_code": -1, "err_msg": err_msg})
+            # try:
+            ret = self.select(conn, entity)
+            # except Exception as e:
+            #     err_msg = str(e)
+            # if err_msg == "":
+            return sanic.response.json({"err_code": 0, "data_list": ret})
+            # return sanic.response.json({"err_code": -1, "err_msg": err_msg})
         else:
             return sanic.response.json({"err_code": -1, "err_msg": "action: %s not support" % action})
 
@@ -210,7 +233,7 @@ class Entity:
             logger.info(cur.mogrify(sql, values))
         cur.execute(sql, values)
 
-        self._after_insert(conn, entity)
+        self._after_insert(conn, entity, cur.rowcount, cur.lastrowid)
         conn.commit()
         effected_rows, inserted_id = cur.rowcount, cur.lastrowid
         return effected_rows, inserted_id
@@ -219,13 +242,15 @@ class Entity:
         # return effected rows
         self._before_update(conn, entity)
         sql, values = self._update_sql(entity)
-        cur = conn.cursor()
-        df = pretty.Defer(cur.close)
-        if pretty.get_log_number(logconsts.LOG_SQL):
-            logger.info(cur.mogrify(sql, values))
-        cur.execute(sql, values)
-
-        effected_rows = cur.rowcount
+        if sql != "":
+            cur = conn.cursor()
+            df = pretty.Defer(cur.close)
+            if pretty.get_log_number(logconsts.LOG_SQL):
+                logger.info(cur.mogrify(sql, values))
+            cur.execute(sql, values)
+            effected_rows = cur.rowcount
+        else:
+            effected_rows = 0
         self._after_update(conn, entity)
         conn.commit()
 

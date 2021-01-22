@@ -54,7 +54,19 @@ class LoginManager:
             old_token = self.redis.hget("login_map_account", entry.account_id)
             if old_token is not None:
                 self.redis.hdel("login_map", token)
-            v = json.dumps(entry.__dict__)
+            entry_dict = entry.__dict__
+            # pop_list = []
+            # logger.info(entry_dict)
+            # for k in entry_dict:
+            #     if k.find("__") >= 0:
+            #         pop_list.append(k)
+            #     for lt in k:
+            #         if lt >= "A" and lt <= "Z":
+            #             pop_list.append(k)
+            #             break
+            # for k in pop_list:
+            #     entry_dict.pop(k)
+            v = json.dumps(entry_dict)
             self.redis.hset("login_map", token, v)
             self.redis.hset("login_map_account", entry.account_id, token)
             return
@@ -83,11 +95,13 @@ class LoginManager:
         info = json.loads(request.body)
         u = info.get("user_name")
         p = info.get("passwd")
-        project_id = info.get("project_id")
+        project_id = request.headers.get("projectid")
+        if project_id is None or project_id == "":
+            project_id = info.get("projectid")
         if u is None or p is None or project_id is None or u == "" or p == "":
             return response.json({"err_code": -1, "err_msg": "login fail"})
-        s = '''select * from uhrs.employee where disabled = 0 and account_id = %s and password_hash = %s and id in 
-        (select employee_id from uhrs.employee_project where project_id = %s)'''
+        s = '''select * from uhrs.employee where disabled = 0 and account_id = %s and password_hash = %s and (account_id = 'admin' or id in 
+        (select employee_id from uhrs.employee_project where project_id = %s))'''
         if pretty.get_log_number(logconsts.LOG_SQL):
             logger.info(s % (u, p, project_id))
         ret = pymysqlutil.select(conn, s, u, p, project_id)
@@ -98,14 +112,14 @@ class LoginManager:
         token = hashlib.md5(bytes(token, encoding="utf-8")).hexdigest()
         entry.token = token
         entry.check_in_time = int(time.time())
-        entry.check_in_ua = pretty.user_agent(request)
+        entry.check_in_ua = hashlib.md5(bytes(pretty.user_agent(request), encoding="utf-8")).hexdigest()
         entry.check_in_ip = pretty.remote_ip(request)
         entry.project_id = project_id
         self._set_entry(token, entry)
         self._save()
         s = "update uhrs.employee set check_in_time = %s, check_in_ip = %s, check_in_ua = %s where id = %s"
         if pretty.get_log_number(logconsts.LOG_SQL):
-            logger.info(s, entry.check_in_time, entry.check_in_ip, entry.check_in_ua, entry.id)
+            logger.info(s % (entry.check_in_time, entry.check_in_ip, entry.check_in_ua, entry.id))
         pymysqlutil.execute(conn, s, entry.check_in_time, entry.check_in_ip, entry.check_in_ua, entry.id, commit=True)
         return response.json({"err_code": 0, "err_msg": "", "token": token})
 
@@ -118,7 +132,7 @@ class LoginManager:
             return {"err_code": -1, "err_msg": "no body"}, None
         info = json.loads(request.body)
         token = request.headers.get("token")
-        project_id = request.headers.get("project_id")
+        project_id = request.headers.get("projectid")
         if token is None:
             return {"err_code": -1, "err_msg": "no token"}, None
         entry = self._get_entry(token)
@@ -127,8 +141,9 @@ class LoginManager:
             return {"err_code": -1, "err_msg": "invalid token %s:%d" % (token, len(token))}, None
         tm_unix = int(time.time())
         ip = pretty.remote_ip(request)
-        ua = pretty.user_agent(request)
-        if ip == entry.check_in_ip and ua == entry.check_in_ua and tm_unix - entry.check_in_time < 3600 * 24 and int(project_id) == entry.project_id:
+        ua = hashlib.md5(bytes(pretty.user_agent(request), encoding="utf-8")).hexdigest()
+        if ip == entry.check_in_ip and ua == entry.check_in_ua and tm_unix - entry.check_in_time < 3600 * 24 and int(
+                project_id) == int(entry.project_id):
             return {"err_code": 0, "err_msg": ""}, entry
         return {"err_code": -2, "err_msg": "invalid token"}, None
 

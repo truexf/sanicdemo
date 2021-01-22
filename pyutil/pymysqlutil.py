@@ -1,4 +1,6 @@
 import pyutil.pretty as pretty
+import pyutil.logconsts as logconsts
+from loguru import logger
 
 
 def select(conn, sql, *args):
@@ -11,6 +13,8 @@ def select(conn, sql, *args):
     '''
     cur_data = conn.cursor()
     defer = pretty.Defer(cur_data.close)
+    if pretty.get_log_number(logconsts.LOG_SQL):
+        logger.info(cur_data.mogrify(sql, args))
     cur_data.execute(sql, args)
     data = cur_data.fetchall()
     key_list = []
@@ -34,6 +38,8 @@ def execute(conn, sql, *args, commit=False):
     '''
     cur = conn.cursor()
     defer = pretty.Defer(cur.close)
+    if pretty.get_log_number(logconsts.LOG_SQL):
+        logger.info(cur.mogrify(sql, args))
     ret = cur.execute(sql, args)
     if commit:
         conn.commit()
